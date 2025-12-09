@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <title>AR con QR Scanner</title>
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+        }
+        
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.85);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 12px;
+            z-index: 1000;
+            max-width: 320px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        
+        #info h3 {
+            margin: 0 0 12px 0;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        #info p {
+            margin: 6px 0;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        
+        #status {
+            font-weight: 500;
+            padding: 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 6px;
+            margin-top: 10px;
+        }
+        
+        .button-container {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            display: flex;
+            gap: 10px;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 30px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s ease;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+        
+        #loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease;
+        }
+
+        #loading.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        #loading h2 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+
+        #loading p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .error-msg {
+            background: rgba(244, 67, 54, 0.95);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .warning-msg {
+            background: rgba(255, 152, 0, 0.95);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .success-msg {
+            background: rgba(76, 175, 80, 0.95);
+            color: white;
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 8px;
+            font-size: 12px;
+        }
+
+        #qr-help {
+            position: absolute;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 12px;
+            z-index: 1000;
+        }
+
+        #qr-help a {
+            color: #64b5f6;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">
+        <div class="spinner"></div>
+        <h2>Inicializando AR</h2>
+        <p>Preparando cámara y sensores...</p>
+    </div>
+    
+    <!-- <div id="info">
+        <h3>📱 Escáner AR</h3>
+        <p>🎯 Apunta a un código QR Barcode</p>
+        <p>✨ Aparecerá un objeto 3D</p>
+        <p id="status">Estado: Inicializando...</p>
+        <div id="error-container"></div>
+    </div> -->
+
+    <!-- <div id="qr-help">
+        <a href="https://ar-js-org.github.io/AR.js/three.js/examples/marker-training/examples/generator.html" target="_blank">
+            Genera tu QR Barcode aquí
+        </a>
+    </div> -->
+    
+    <div class="button-container">
+        <button onclick="toggleAnimation()" id="toggleBtn">Pausar</button>
+        <button onclick="requestCamera()">Reintentar</button>
+    </div>
+    
+     <a-scene
+        embedded
+        arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;"
+        vr-mode-ui="enabled: false"
+        renderer="logarithmicDepthBuffer: true; precision: medium; antialias: true;"
+        id="arScene">
+        
+        <a-entity light="type: ambient; color: #BBB; intensity: 0.5"></a-entity>
+        <a-entity light="type: directional; color: #FFF; intensity: 0.8" position="2 4 3"></a-entity>
+        
+        <a-marker type="barcode" value="0" id="marker" smooth="true" smoothCount="5" smoothTolerance="0.01" smoothThreshold="2">
+            
+            <!-- Estrella principal -->
+            <a-entity id="shootingStar" position="0 1.5 0">
+                <!-- Núcleo de la estrella -->
+                <a-sphere 
+                    radius="0.15"
+                    color="#ffd700"
+                    material="emissive: #ffd700; emissiveIntensity: 0.8; metalness: 0.9"
+                    animation="property: scale; to: 1.3 1.3 1.3; dir: alternate; loop: true; dur: 800; easing: easeInOutQuad">
+                </a-sphere>
+
+                <!-- Puntas de la estrella (5 puntas) -->
+                <a-cone position="0 0.25 0" rotation="0 0 0" radius-bottom="0.08" radius-top="0" height="0.4" color="#ffd700" 
+                    material="emissive: #ffd700; emissiveIntensity: 0.6"></a-cone>
+                <a-cone position="0 -0.25 0" rotation="0 0 180" radius-bottom="0.08" radius-top="0" height="0.4" color="#ffd700" 
+                    material="emissive: #ffd700; emissiveIntensity: 0.6"></a-cone>
+                <a-cone position="0.25 0 0" rotation="0 0 -90" radius-bottom="0.08" radius-top="0" height="0.4" color="#ffd700" 
+                    material="emissive: #ffd700; emissiveIntensity: 0.6"></a-cone>
+                <a-cone position="-0.25 0 0" rotation="0 0 90" radius-bottom="0.08" radius-top="0" height="0.4" color="#ffd700" 
+                    material="emissive: #ffd700; emissiveIntensity: 0.6"></a-cone>
+
+                <!-- Estela brillante (trail) -->
+                <a-entity position="0 0 0.5">
+                    <a-cone position="0 0 0" rotation="90 0 0" radius-bottom="0.1" radius-top="0.01" height="1.2" 
+                        color="#ffffff" material="emissive: #ffeb3b; emissiveIntensity: 0.5; opacity: 0.7; transparent: true"></a-cone>
+                </a-entity>
+
+                <!-- Partículas brillantes alrededor -->
+                <a-sphere position="0.3 0.2 0" radius="0.05" color="#ffeb3b" 
+                    material="emissive: #ffeb3b; emissiveIntensity: 0.9"
+                    animation="property: position; to: 0.5 0.4 -0.3; dur: 1500; loop: true; easing: linear"
+                    animation__scale="property: scale; to: 0.3 0.3 0.3; dur: 1500; loop: true; easing: linear"></a-sphere>
+                
+                <a-sphere position="-0.3 0.15 0" radius="0.04" color="#fff8dc" 
+                    material="emissive: #fff8dc; emissiveIntensity: 0.9"
+                    animation="property: position; to: -0.5 0.35 -0.3; dur: 1800; loop: true; easing: linear"
+                    animation__scale="property: scale; to: 0.2 0.2 0.2; dur: 1800; loop: true; easing: linear"></a-sphere>
+                
+                <a-sphere position="0.2 -0.2 0" radius="0.06" color="#fffacd" 
+                    material="emissive: #fffacd; emissiveIntensity: 0.8"
+                    animation="property: position; to: 0.4 -0.4 -0.4; dur: 2000; loop: true; easing: linear"
+                    animation__scale="property: scale; to: 0.1 0.1 0.1; dur: 2000; loop: true; easing: linear"></a-sphere>
+
+                <!-- Anillo de polvo estelar -->
+                <a-torus 
+                    radius="0.5" 
+                    radius-tubular="0.02" 
+                    color="#e6e6fa" 
+                    material="emissive: #e6e6fa; emissiveIntensity: 0.5; opacity: 0.6; transparent: true"
+                    animation="property: rotation; to: 0 360 0; dur: 4000; loop: true; easing: linear"
+                    animation__scale="property: scale; to: 1.5 1.5 1.5; dir: alternate; loop: true; dur: 2000; easing: easeInOutSine"></a-torus>
+
+                <!-- Animación de rotación y movimiento de toda la estrella -->
+                <a-animation attribute="rotation" 
+                    to="0 360 360" 
+                    dur="6000" 
+                    repeat="indefinite" 
+                    easing="linear"></a-animation>
+                
+                <a-animation attribute="position" 
+                    to="1.5 1.5 -0.5" 
+                    dur="3000" 
+                    direction="alternate" 
+                    repeat="indefinite" 
+                    easing="easeInOutQuad"></a-animation>
+            </a-entity>
+
+            <!-- Texto flotante -->
+            <a-text 
+                value=""
+                position="0 2.5 0"
+                align="center"
+                color="#ffd700"
+                width="3"
+                animation="property: position; to: 0 2.8 0; dir: alternate; loop: true; dur: 2000; easing: easeInOutSine">
+            </a-text>
+
+            <!-- Círculo mágico en el suelo -->
+            <a-ring 
+                position="0 0.05 0" 
+                rotation="-90 0 0" 
+                radius-inner="0.8" 
+                radius-outer="1" 
+                color="#9370db"
+                material="emissive: #9370db; emissiveIntensity: 0.4; opacity: 0.5; transparent: true"
+                animation="property: rotation; to: -90 360 0; dur: 8000; loop: true; easing: linear"></a-ring>
+            
+        </a-marker>
+        
+        <a-entity camera></a-entity>
+    </a-scene>
+    
+    <script>
+        let animationPaused = false;
+        let cameraRequested = false;
+        const loadingElement = document.getElementById('loading');
+        const statusElement = document.getElementById('status');
+        const errorContainer = document.getElementById('error-container');
+        
+        // Verificar compatibilidad del navegador
+        function checkCompatibility() {
+            const issues = [];
+            
+            if (!navigator.mediaDevices) {
+                issues.push('Tu navegador no soporta MediaDevices API');
+            }
+            
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                issues.push('getUserMedia no disponible. Usa Chrome, Firefox o Safari actualizado');
+            }
+            
+            const canvas = document.createElement('canvas');
+            const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+            if (!gl) {
+                issues.push('WebGL no disponible. Necesario para AR');
+            }
+            
+            if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+                issues.push('Se requiere HTTPS para acceder a la cámara');
+            }
+
+            if (issues.length > 0) {
+                errorContainer.innerHTML = '<div class="warning-msg">' + issues.join('<br>') + '</div>';
+            }
+            
+            return issues.length === 0;
+        }
+
+        // Solicitar acceso a la cámara con configuración específica
+        function requestCamera() {
+            if (cameraRequested) {
+                console.log('Cámara ya solicitada');
+                return;
+            }
+            
+            cameraRequested = true;
+            statusElement.textContent = 'Estado: Solicitando cámara...';
+            
+            const constraints = {
+                video: {
+                    facingMode: { ideal: 'environment' },
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                },
+                audio: false
+            };
+            
+            navigator.mediaDevices.getUserMedia(constraints)
+                .then(stream => {
+                    console.log('Cámara accesible');
+                    statusElement.textContent = 'Estado: Cámara lista';
+                    errorContainer.innerHTML = '<div class="success-msg">✓ Cámara activada correctamente</div>';
+                    
+                    // Detener el stream de prueba
+                    stream.getTracks().forEach(track => track.stop());
+                    
+                    setTimeout(() => {
+                        statusElement.textContent = 'Estado: Buscando QR Barcode...';
+                    }, 2000);
+                })
+                .catch(err => {
+                    console.error('Error de cámara:', err);
+                    cameraRequested = false;
+                    
+                    let errorMsg = '';
+                    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                        errorMsg = 'Permiso de cámara denegado. Por favor permite el acceso en la configuración del navegador.';
+                    } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+                        errorMsg = 'No se encontró ninguna cámara en tu dispositivo.';
+                    } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+                        errorMsg = 'La cámara está siendo usada por otra aplicación. Cierra otras apps que usen la cámara.';
+                    } else if (err.name === 'OverconstrainedError') {
+                        errorMsg = 'Las restricciones de cámara no son compatibles con tu dispositivo.';
+                    } else {
+                        errorMsg = 'Error: ' + err.message;
+                    }
+                    
+                    errorContainer.innerHTML = '<div class="error-msg">' + errorMsg + '<br><br>Presiona el botón "Reintentar" para intentar de nuevo.</div>';
+                    statusElement.textContent = 'Estado: Error de cámara';
+                });
+        }
+        
+        // Inicializar cuando todo esté cargado
+        window.addEventListener('load', function() {
+            console.log('Página cargada');
+            
+            if (!checkCompatibility()) {
+                loadingElement.querySelector('p').textContent = 'Hay problemas de compatibilidad';
+                setTimeout(() => {
+                    loadingElement.classList.add('hidden');
+                }, 2000);
+                return;
+            }
+            
+            const scene = document.querySelector('#arScene');
+            const marker = document.querySelector('#marker');
+            
+            if (!scene || !marker) {
+                console.error('No se pudo inicializar AR');
+                errorContainer.innerHTML = '<div class="error-msg">Error al cargar componentes AR</div>';
+                loadingElement.classList.add('hidden');
+                return;
+            }
+            
+            // Evento de escena cargada
+            scene.addEventListener('loaded', function() {
+                console.log('Escena AR cargada');
+                
+                setTimeout(() => {
+                    loadingElement.classList.add('hidden');
+                    requestCamera();
+                }, 1500);
+            });
+            
+            // Detección de marcador
+            marker.addEventListener('markerFound', function() {
+                console.log('¡Marcador detectado!');
+                statusElement.textContent = 'Estado: QR Detectado';
+                statusElement.style.background = 'rgba(76, 175, 80, 0.3)';
+            });
+            
+            marker.addEventListener('markerLost', function() {
+                console.log('Marcador perdido');
+                statusElement.textContent = 'Estado: Buscando QR...';
+                statusElement.style.background = 'rgba(255,255,255,0.1)';
+            });
+        });
+        
+        // Pausar/reanudar animaciones
+        function toggleAnimation() {
+            const content = document.getElementById('arContent');
+            const btn = document.getElementById('toggleBtn');
+            
+            if (!content) return;
+            
+            if (animationPaused) {
+                content.setAttribute('visible', 'true');
+                btn.textContent = 'Pausar';
+                animationPaused = false;
+            } else {
+                content.setAttribute('visible', 'false');
+                btn.textContent = 'Reanudar';
+                animationPaused = true;
+            }
+        }
+
+        // Manejar errores globales
+        window.addEventListener('error', function(e) {
+            console.error('Error global:', e);
+        });
+    </script>
+</body>
+</html>
